@@ -235,50 +235,81 @@ legal-rag/
 
 ### Prerequisites
 - Windows 10 or 11 (64-bit)
-- 8 GB RAM minimum
-- Python 3.11+
-- Node.js v18+ and npm
+- 8 GB RAM minimum (16 GB recommended for concurrent inference)
+- Python 3.11, 3.12, or 3.13
+- Node.js v18+ and npm v9+
 - [Ollama for Windows](https://ollama.com) installed and running
 
 ---
 
-### Step 1: Download Required Local Models
-Open PowerShell and pull the local embedding and generation models into Ollama:
+### Step 1: Download Required Local Models (Ollama)
+Ensure the Ollama service is running (look for the Ollama icon in the system tray or run `ollama serve`). Open PowerShell and pull both required models:
 
 ```powershell
 ollama pull nomic-embed-text
 ollama pull qwen2.5:1.5b
 ```
 
-Verify that the models are installed locally:
+Verify that both models are installed locally:
 ```powershell
 ollama list
 ```
+Expected output should list both `nomic-embed-text:latest` and `qwen2.5:1.5b:latest`.
 
 ---
 
-### Step 2: Set Up Backend Environment
-Open a PowerShell terminal in the project root:
+### Step 2: Backend Setup Guide
+
+You can launch the backend using either of the two standard workflows below:
+
+#### Option A: Running from Repository Root (Recommended)
+Open a PowerShell terminal and navigate to the repository root directory:
 
 ```powershell
+# 1. Navigate to project root
 cd c:\Users\yelga\Desktop\legal-rag
 
-# 1. Create and activate virtual environment
+# 2. Create the Python virtual environment (if not already created)
 python -m venv venv
+
+# 3. Activate the virtual environment
+# Note: If PowerShell blocks script execution, first run: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\venv\Scripts\Activate.ps1
 
-# 2. Upgrade pip and install backend dependencies
+# 4. Install backend dependencies into the active virtual environment
 pip install --upgrade pip
 pip install -r backend\requirements.txt
 
-# 3. Generate synthetic multi-matter evaluation documents
+# 5. Bootstrap sample synthetic legal documents (PDFs & TXTs with canary secrets)
 python scripts\generate_synthetic_docs.py
+
+# 6. Launch the FastAPI server
+.\venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+#### Option B: Running from the `backend/` Folder
+If your terminal is currently inside the `backend/` directory:
+
+```powershell
+# Inside c:\Users\yelga\Desktop\legal-rag\backend
+# Use the root virtual environment:
+..\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# When running from inside backend/, reference app.main:app directly:
+..\venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+#### Backend Verification
+Confirm the backend is up and running by opening:
+- Liveness Probe: [`http://127.0.0.1:8000/api/v1/health`](http://127.0.0.1:8000/api/v1/health) (returns `{"status":"ok","offline_mode":true}`)
+- Subsystems Readiness: [`http://127.0.0.1:8000/api/v1/health/ready`](http://127.0.0.1:8000/api/v1/health/ready)
+- Interactive Swagger UI: [`http://127.0.0.1:8000/docs`](http://127.0.0.1:8000/docs)
 
 ---
 
 ### Step 3: Run the Automated Test Suite
-Execute the comprehensive test suite (unit, integration, and security tests):
+In the root terminal with the virtual environment activated, execute the comprehensive test suite:
 
 ```powershell
 .\venv\Scripts\pytest backend\tests -v
@@ -287,7 +318,7 @@ Execute the comprehensive test suite (unit, integration, and security tests):
 Expected output:
 ```text
 ============================= test session starts =============================
-platform win32 -- Python 3.13.7, pytest-9.1.1, pluggy-1.7.0
+platform win32 -- Python 3.13.x, pytest, pluggy
 rootdir: C:\Users\yelga\Desktop\legal-rag
 configfile: pytest.ini
 
@@ -308,25 +339,40 @@ backend/tests/unit/test_file_manager.py::test_sha256_computation PASSED  [100%]
 
 ---
 
-### Step 4: Launch the Backend API Server
+### Step 4: Frontend Setup Guide
+
+Open a **separate PowerShell terminal** for the frontend:
+
 ```powershell
-.\venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+# 1. Navigate to the frontend directory
+cd c:\Users\yelga\Desktop\legal-rag\frontend
+
+# 2. Install Node dependencies
+npm install
+
+# 3. (Optional) Configure environment variable if not using default 127.0.0.1:8000
+# Default is already configured to http://127.0.0.1:8000/api/v1
+# If needed, create .env.local:
+# NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api/v1
+
+# 4. Launch Next.js development server
+npm run dev
 ```
-- API Endpoint: `http://127.0.0.1:8000/api/v1`
-- Interactive OpenAPI Docs: `http://127.0.0.1:8000/docs`
-- Health / Readiness Check: `http://127.0.0.1:8000/api/v1/health/ready`
+
+Open your browser at **[`http://localhost:3000`](http://localhost:3000)**.
 
 ---
 
-### Step 5: Launch the Next.js Frontend
-Open a second PowerShell window:
+### 🛠️ Common Errors & Troubleshooting
 
-```powershell
-cd c:\Users\yelga\Desktop\legal-rag\frontend
-npm install
-npm run dev
-```
-Open your browser at **`http://localhost:3000`**.
+| Error Symptom | Root Cause | Solution |
+|---|---|---|
+| **`TypeError: Failed to fetch`** *(Source: `client.ts @ fetch`)* | The Next.js frontend cannot reach `http://127.0.0.1:8000/api/v1`. The FastAPI backend server is not running or crashed. | 1. Start the backend: `.\venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload`<br>2. Test in browser: [`http://127.0.0.1:8000/api/v1/health`](http://127.0.0.1:8000/api/v1/health)<br>3. Click **"Reconnect Backend"** or **"Retry"** in the web interface. |
+| **`No module named uvicorn`** | Python is using an unpopulated environment (e.g. newly created `backend\venv` instead of project `.\venv`) or dependencies were not installed. | Activate the correct environment and install packages:<br>`cd c:\Users\yelga\Desktop\legal-rag`<br>`.\venv\Scripts\Activate.ps1`<br>`pip install -r backend\requirements.txt` |
+| **`ackend.app.main:app : The term 'ackend...' is not recognized`** | Missing `python -m uvicorn` at the beginning of the command, or terminal paste truncated characters. | Run the full command line:<br>`.\venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload` |
+| **`Activate.ps1 cannot be loaded because running scripts is disabled`** | Windows PowerShell execution policy is restricted by default. | Run in PowerShell before activating:<br>`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`<br>Then re-run `.\venv\Scripts\Activate.ps1`. |
+| **`No module named 'backend'`** | Running `uvicorn backend.app.main:app` from inside the `backend/` directory instead of the project root. | Either `cd ..` back to root `legal-rag/` or run `uvicorn app.main:app --host 127.0.0.1 --port 8000` when inside `backend/`. |
+| **Inference LLM / Ollama connection error** | Ollama is not running on `127.0.0.1:11434` or the required models have not been pulled. | 1. Start Ollama: `ollama serve`<br>2. Pull models: `ollama pull nomic-embed-text` and `ollama pull qwen2.5:1.5b`. |
 
 ---
 

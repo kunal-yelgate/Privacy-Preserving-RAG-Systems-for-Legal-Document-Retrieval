@@ -14,34 +14,63 @@ import {
   XCircle,
   Database,
   RefreshCw,
+  AlertCircle,
 } from "lucide-react";
-import { api } from "@/lib/api/client";
+import { api, getErrorMessage, isApiError } from "@/lib/api/client";
 import { AuditEvent, EvaluationRun, SecurityStatus } from "@/types";
+import { BackendErrorBanner } from "@/components/ui/BackendErrorBanner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function SecurityCenterPage() {
+  const { authReady, backendOnline } = useAuth();
   const [securityStatus, setSecurityStatus] = useState<SecurityStatus | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [evalRuns, setEvalRuns] = useState<EvaluationRun[]>([]);
   const [runningEval, setRunningEval] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isConnError, setIsConnError] = useState(false);
+  const [evalError, setEvalError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!authReady) return;
+    if (!backendOnline) {
+      setLoading(false);
+      setError("Backend is offline. Ensure the FastAPI server is running on 127.0.0.1:8000.");
+      setIsConnError(true);
+      return;
+    }
     loadSecurityData();
-  }, []);
+  }, [authReady, backendOnline]);
 
   const loadSecurityData = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [sec, audits, evals] = await Promise.all([
+      const [secRes, auditsRes, evalsRes] = await Promise.allSettled([
         api.getSecurityStatus(),
         api.listAuditEvents(25),
         api.listEvaluationRuns(),
       ]);
-      setSecurityStatus(sec);
-      setAuditEvents(audits);
-      setEvalRuns(evals);
-    } catch (err) {
+
+      if (secRes.status === "fulfilled") setSecurityStatus(secRes.value);
+      if (auditsRes.status === "fulfilled") setAuditEvents(auditsRes.value);
+      if (evalsRes.status === "fulfilled") setEvalRuns(evalsRes.value);
+
+      if (secRes.status === "rejected") {
+        setError(getErrorMessage(secRes.reason));
+        setIsConnError(isApiError(secRes.reason) ? secRes.reason.isConnectionError : true);
+      } else if (auditsRes.status === "rejected") {
+        setError(getErrorMessage(auditsRes.reason));
+        setIsConnError(isApiError(auditsRes.reason) ? auditsRes.reason.isConnectionError : true);
+      } else if (evalsRes.status === "rejected") {
+        setError(getErrorMessage(evalsRes.reason));
+        setIsConnError(isApiError(evalsRes.reason) ? evalsRes.reason.isConnectionError : true);
+      }
+    } catch (err: any) {
       console.error("Failed to load security data:", err);
+      setError(getErrorMessage(err));
+      setIsConnError(isApiError(err) ? err.isConnectionError : true);
     } finally {
       setLoading(false);
     }
@@ -49,11 +78,12 @@ export default function SecurityCenterPage() {
 
   const handleRunEvaluation = async () => {
     setRunningEval(true);
+    setEvalError(null);
     try {
       await api.runEvaluation();
       await loadSecurityData();
     } catch (err: any) {
-      alert(err.message || "Failed to execute evaluation benchmark.");
+      setEvalError(getErrorMessage(err, "Failed to execute evaluation benchmark."));
     } finally {
       setRunningEval(false);
     }
@@ -70,15 +100,51 @@ export default function SecurityCenterPage() {
           </p>
         </div>
 
-        <button
-          onClick={handleRunEvaluation}
-          disabled={runningEval}
-          className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors"
-        >
-          <Play className="w-3.5 h-3.5" />
-          <span>{runningEval ? "Executing Adversarial Benchmark..." : "Run Security Evaluation"}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadSecurityData}
+            disabled={loading}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+            title="Refresh Security Data"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={handleRunEvaluation}
+            disabled={runningEval}
+            className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors"
+          >
+            <Play className="w-3.5 h-3.5" />
+            <span>{runningEval ? "Executing Adversarial Benchmark..." : "Run Security Evaluation"}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Backend Connection Error */}
+      {error && (
+        <BackendErrorBanner
+          message={error}
+          isConnectionError={isConnError}
+          onRetry={loadSecurityData}
+          retrying={loading}
+        />
+      )}
+
+      {/* Benchmark Execution Error */}
+      {evalError && (
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+            <span>{evalError}</span>
+          </div>
+          <button
+            onClick={() => setEvalError(null)}
+            className="text-rose-500 hover:text-rose-800 text-xs font-semibold ml-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Security Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

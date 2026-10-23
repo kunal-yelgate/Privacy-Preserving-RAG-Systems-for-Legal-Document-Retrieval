@@ -12,14 +12,20 @@ import {
   Plus,
   RefreshCw,
 } from "lucide-react";
-import { api } from "@/lib/api/client";
+import { api, getErrorMessage, isApiError } from "@/lib/api/client";
 import { ClassificationLevel, DocumentMetadata, Matter } from "@/types";
+import { BackendErrorBanner } from "@/components/ui/BackendErrorBanner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function DocumentsPage() {
+  const { authReady, backendOnline } = useAuth();
   const [matters, setMatters] = useState<Matter[]>([]);
   const [selectedMatter, setSelectedMatter] = useState<string>("");
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isConnError, setIsConnError] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -29,20 +35,30 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchMatters = async () => {
-      try {
-        const m = await api.listMatters();
-        setMatters(m);
-        if (m.length > 0) {
-          setSelectedMatter(m[0].matter_id);
-        }
-      } catch (err) {
-        console.error("Failed to load matters:", err);
+  const fetchMatters = async () => {
+    setError(null);
+    try {
+      const m = await api.listMatters();
+      setMatters(m);
+      if (m.length > 0 && !selectedMatter) {
+        setSelectedMatter(m[0].matter_id);
       }
-    };
+    } catch (err: any) {
+      console.error("Failed to load matters:", err);
+      setError(getErrorMessage(err));
+      setIsConnError(isApiError(err) ? err.isConnectionError : true);
+    }
+  };
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!backendOnline) {
+      setError("Backend is offline. Ensure the FastAPI server is running on 127.0.0.1:8000.");
+      setIsConnError(true);
+      return;
+    }
     fetchMatters();
-  }, []);
+  }, [authReady, backendOnline]);
 
   useEffect(() => {
     if (!selectedMatter) return;
@@ -50,12 +66,17 @@ export default function DocumentsPage() {
   }, [selectedMatter]);
 
   const loadDocuments = async (matterId: string) => {
+    if (!matterId) return;
     setLoading(true);
+    setActionError(null);
     try {
       const docs = await api.listDocuments(matterId);
       setDocuments(docs);
-    } catch (err) {
+      setError(null);
+    } catch (err: any) {
       console.error("Failed to load documents:", err);
+      setError(getErrorMessage(err));
+      setIsConnError(isApiError(err) ? err.isConnectionError : true);
     } finally {
       setLoading(false);
     }
@@ -74,7 +95,7 @@ export default function DocumentsPage() {
       setUploadTitle("");
       await loadDocuments(selectedMatter);
     } catch (err: any) {
-      setUploadError(err.message || "Upload failed.");
+      setUploadError(getErrorMessage(err, "Upload failed."));
     } finally {
       setUploading(false);
     }
@@ -84,11 +105,12 @@ export default function DocumentsPage() {
     if (!confirm("Are you sure you want to delete this document? Chunks and embeddings will also be removed.")) {
       return;
     }
+    setActionError(null);
     try {
       await api.deleteDocument(docId);
       await loadDocuments(selectedMatter);
-    } catch (err) {
-      alert("Failed to delete document.");
+    } catch (err: any) {
+      setActionError(getErrorMessage(err, "Failed to delete document."));
     }
   };
 
@@ -114,6 +136,34 @@ export default function DocumentsPage() {
         </div>
       </div>
 
+      {/* Error Alert Banners */}
+      {error && (
+        <BackendErrorBanner
+          message={error}
+          isConnectionError={isConnError}
+          onRetry={() => {
+            fetchMatters();
+            if (selectedMatter) loadDocuments(selectedMatter);
+          }}
+          retrying={loading}
+        />
+      )}
+
+      {actionError && (
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+            <span>{actionError}</span>
+          </div>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-rose-500 hover:text-rose-800 text-xs font-semibold ml-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Matter Selector Filter */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
         <Filter className="w-4 h-4 text-slate-400" />
@@ -123,6 +173,7 @@ export default function DocumentsPage() {
           onChange={(e) => setSelectedMatter(e.target.value)}
           className="text-xs font-medium border border-slate-200 rounded-md px-3 py-1.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
         >
+          {matters.length === 0 && <option value="">No matters available</option>}
           {matters.map((m) => (
             <option key={m.matter_id} value={m.matter_id}>
               {m.name} ({m.matter_id})
@@ -130,11 +181,14 @@ export default function DocumentsPage() {
           ))}
         </select>
         <button
-          onClick={() => loadDocuments(selectedMatter)}
+          onClick={() => {
+            if (selectedMatter) loadDocuments(selectedMatter);
+            else fetchMatters();
+          }}
           className="ml-auto p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors"
           title="Refresh"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
@@ -142,6 +196,24 @@ export default function DocumentsPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Loading documents...</div>
+        ) : error && documents.length === 0 ? (
+          <div className="p-12 text-center space-y-3">
+            <AlertCircle className="w-10 h-10 text-rose-400 mx-auto" />
+            <p className="text-sm text-rose-800 font-semibold">Unable to fetch documents from backend</p>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Please ensure the FastAPI service is active and responsive on 127.0.0.1:8000.
+            </p>
+            <button
+              onClick={() => {
+                fetchMatters();
+                if (selectedMatter) loadDocuments(selectedMatter);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-md hover:bg-slate-800"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry Request</span>
+            </button>
+          </div>
         ) : documents.length === 0 ? (
           <div className="p-12 text-center space-y-3">
             <FileText className="w-10 h-10 text-slate-300 mx-auto" />

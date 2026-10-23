@@ -41,3 +41,29 @@
   ```powershell
   Get-Process | Where-Object { $_.ProcessName -match "python|node" }
   ```
+
+## 6. Frontend `TypeError: Failed to fetch` (`client.ts @ fetch`)
+- **Symptom**: Red runtime alert or banner stating `Failed to fetch` or `Unable to reach local backend at http://127.0.0.1:8000/api/v1`.
+- **Cause**: The Next.js frontend is attempting to call the REST API while the FastAPI backend service has not yet been started or is restarting.
+- **Resolution**:
+  1. Open a PowerShell terminal at the repository root and start the backend:
+     ```powershell
+     cd c:\Users\yelga\Desktop\legal-rag
+     .\venv\Scripts\Activate.ps1
+     .\venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+     ```
+  2. Verify backend readiness in your browser at [`http://127.0.0.1:8000/api/v1/health`](http://127.0.0.1:8000/api/v1/health).
+  3. Click the **"Reconnect Backend"** or **"Retry"** button in the web UI.
+
+## 7. `No module named uvicorn`
+- **Symptom**: PowerShell outputs `python.exe: No module named uvicorn`.
+- **Cause**: The terminal is using an unpopulated Python virtual environment (e.g., an empty `backend\venv` created inside the backend subdirectory) instead of the project root's `.\venv` where dependencies are installed.
+- **Resolution**:
+  Run from the project root using the project virtual environment:
+  ```powershell
+  cd c:\Users\yelga\Desktop\legal-rag
+  .\venv\Scripts\Activate.ps1
+  pip install -r backend\requirements.txt
+  .\venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+  ```
+

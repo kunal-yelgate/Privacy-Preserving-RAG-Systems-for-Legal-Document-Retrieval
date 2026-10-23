@@ -12,13 +12,20 @@ import {
   User,
   Shield,
   CheckCircle,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
-import { api } from "@/lib/api/client";
+import { api, getErrorMessage, isApiError } from "@/lib/api/client";
 import { Matter } from "@/types";
+import { BackendErrorBanner } from "@/components/ui/BackendErrorBanner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function MattersPage() {
+  const { authReady, backendOnline } = useAuth();
   const [matters, setMatters] = useState<Matter[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isConnError, setIsConnError] = useState(false);
 
   // Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -28,18 +35,29 @@ export default function MattersPage() {
   const [clientName, setClientName] = useState("");
   const [leadCounsel, setLeadCounsel] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!authReady) return;
+    if (!backendOnline) {
+      setLoading(false);
+      setError("Backend is offline. Ensure the FastAPI server is running on 127.0.0.1:8000.");
+      setIsConnError(true);
+      return;
+    }
     loadMatters();
-  }, []);
+  }, [authReady, backendOnline]);
 
   const loadMatters = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await api.listMatters();
       setMatters(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load matters:", err);
+      setError(getErrorMessage(err));
+      setIsConnError(isApiError(err) ? err.isConnectionError : true);
     } finally {
       setLoading(false);
     }
@@ -50,6 +68,7 @@ export default function MattersPage() {
     if (!matterId || !name) return;
 
     setSubmitting(true);
+    setCreateError(null);
     try {
       await api.createMatter({
         matter_id: matterId.toLowerCase().trim(),
@@ -66,7 +85,7 @@ export default function MattersPage() {
       setLeadCounsel("");
       await loadMatters();
     } catch (err: any) {
-      alert(err.message || "Failed to create matter.");
+      setCreateError(getErrorMessage(err, "Failed to create matter."));
     } finally {
       setSubmitting(false);
     }
@@ -83,7 +102,10 @@ export default function MattersPage() {
         </div>
 
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            setCreateError(null);
+            setShowCreateModal(true);
+          }}
           className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -91,14 +113,41 @@ export default function MattersPage() {
         </button>
       </div>
 
+      {error && (
+        <BackendErrorBanner
+          message={error}
+          isConnectionError={isConnError}
+          onRetry={loadMatters}
+          retrying={loading}
+        />
+      )}
+
       {loading ? (
         <div className="p-12 text-center text-sm text-slate-400">Loading matters...</div>
+      ) : error && matters.length === 0 ? (
+        <div className="bg-white rounded-xl border border-rose-200 p-12 text-center space-y-3">
+          <AlertCircle className="w-10 h-10 text-rose-400 mx-auto" />
+          <p className="text-sm text-rose-800 font-semibold">Unable to connect to backend service</p>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Check that the FastAPI server is running locally on 127.0.0.1:8000.
+          </p>
+          <button
+            onClick={loadMatters}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-md hover:bg-slate-800"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Retry Connection</span>
+          </button>
+        </div>
       ) : matters.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-3">
           <Briefcase className="w-10 h-10 text-slate-300 mx-auto" />
           <p className="text-sm text-slate-600 font-medium">No legal matters configured.</p>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              setCreateError(null);
+              setShowCreateModal(true);
+            }}
             className="px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-md"
           >
             Create Your First Matter
@@ -175,6 +224,13 @@ export default function MattersPage() {
                 &times;
               </button>
             </div>
+
+            {createError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-600" />
+                <span className="leading-tight">{createError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleCreate} className="space-y-4">
               <div>

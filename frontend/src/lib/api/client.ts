@@ -20,6 +20,48 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
+export class ApiError extends Error {
+  status?: number;
+  isConnectionError: boolean;
+  endpoint: string;
+  details?: any;
+
+  constructor(
+    message: string,
+    options: {
+      status?: number;
+      isConnectionError?: boolean;
+      endpoint: string;
+      details?: any;
+    }
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = options.status;
+    this.isConnectionError = !!options.isConnectionError;
+    this.endpoint = options.endpoint;
+    this.details = options.details;
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
+}
+
+export function isApiError(err: unknown): err is ApiError {
+  return err instanceof ApiError;
+}
+
+export function getErrorMessage(err: unknown, fallback = "An unexpected error occurred."): string {
+  if (err instanceof ApiError) {
+    return err.message;
+  }
+  if (err instanceof Error) {
+    if (err.name === "TypeError" && err.message.toLowerCase().includes("fetch")) {
+      return `Failed to connect to backend at ${API_BASE}. Ensure the FastAPI server is running on 127.0.0.1:8000.`;
+    }
+    return err.message;
+  }
+  return fallback;
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -60,20 +102,58 @@ class ApiClient {
       headers.set("Content-Type", "application/json");
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers,
+      });
+    } catch (networkErr: any) {
+      const details = networkErr?.message || "Failed to fetch";
+      throw new ApiError(
+        `Unable to reach local backend at ${API_BASE}. Please verify that the FastAPI backend is running on 127.0.0.1:8000. (${details})`,
+        {
+          isConnectionError: true,
+          endpoint,
+          details,
+        }
+      );
+    }
 
     if (response.status === 204) {
       return {} as T;
     }
 
-    const data = await response.json();
+    let data: any = null;
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        data = { message: `Received invalid JSON from ${endpoint} (Status ${response.status})` };
+      }
+    } else {
+      try {
+        const text = await response.text();
+        data = { message: text || `HTTP ${response.status} from ${endpoint}` };
+      } catch {
+        data = { message: `HTTP ${response.status} from ${endpoint}` };
+      }
+    }
 
     if (!response.ok) {
-      const errorMsg = data.message || `Request failed with status ${response.status}`;
-      throw new Error(errorMsg);
+      if (response.status === 401) {
+        this.setToken(null);
+      }
+      const errorMsg =
+        data?.detail ||
+        data?.message ||
+        `Request to ${endpoint} failed with HTTP status ${response.status}`;
+      throw new ApiError(errorMsg, {
+        status: response.status,
+        endpoint,
+        details: data,
+      });
     }
 
     return data as T;
@@ -176,8 +256,8 @@ class ApiClient {
     query: string,
     matterId: string,
     topK = 5
-  ): Promise<{ query: string; total_results: number; results: SearchResultItem[] }> {
-    return this.request<{ query: string; total_results: number; results: SearchResultItem[] }>("/search", {
+  ): Promise<{ query: string; matter_id: string; total_results: number; results: SearchResultItem[] }> {
+    return this.request<{ query: string; matter_id: string; total_results: number; results: SearchResultItem[] }>("/search", {
       method: "POST",
       body: JSON.stringify({ query, matter_id: matterId, top_k: topK }),
     });

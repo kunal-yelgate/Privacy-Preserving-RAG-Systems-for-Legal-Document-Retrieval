@@ -14,9 +14,12 @@ import {
   Cpu,
   HelpCircle,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
-import { api } from "@/lib/api/client";
+import { api, getErrorMessage, isApiError } from "@/lib/api/client";
 import { CitationReference, Matter } from "@/types";
+import { BackendErrorBanner } from "@/components/ui/BackendErrorBanner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface MessageItem {
   id: string;
@@ -29,6 +32,7 @@ interface MessageItem {
 function ResearchContent() {
   const searchParams = useSearchParams();
   const matterParam = searchParams.get("matter");
+  const { authReady, backendOnline } = useAuth();
 
   const [matters, setMatters] = useState<Matter[]>([]);
   const [selectedMatter, setSelectedMatter] = useState<string>(matterParam || "");
@@ -38,23 +42,40 @@ function ResearchContent() {
   const [activeCitation, setActiveCitation] = useState<CitationReference | null>(null);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [isConnError, setIsConnError] = useState(false);
+  const [loadingMatters, setLoadingMatters] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const m = await api.listMatters();
-        setMatters(m);
-        if (m.length > 0 && !selectedMatter) {
-          setSelectedMatter(m[0].matter_id);
-        }
-      } catch (err) {
-        console.error("Failed to load matters:", err);
+  const initMatters = async () => {
+    setLoadingMatters(true);
+    setInitError(null);
+    try {
+      const m = await api.listMatters();
+      setMatters(m);
+      if (m.length > 0 && !selectedMatter) {
+        setSelectedMatter(m[0].matter_id);
       }
-    };
-    init();
-  }, []);
+    } catch (err: any) {
+      console.error("Failed to load matters in research:", err);
+      setInitError(getErrorMessage(err));
+      setIsConnError(isApiError(err) ? err.isConnectionError : true);
+    } finally {
+      setLoadingMatters(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!backendOnline) {
+      setInitError("Backend is offline. Ensure the FastAPI server is running on 127.0.0.1:8000.");
+      setIsConnError(true);
+      setLoadingMatters(false);
+      return;
+    }
+    initMatters();
+  }, [authReady, backendOnline]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -90,7 +111,7 @@ function ResearchContent() {
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
-      setErrorMsg(err.message || "Inference failed. Check local Ollama readiness.");
+      setErrorMsg(getErrorMessage(err, "Inference failed. Check local backend and Ollama readiness."));
     } finally {
       setSubmitting(false);
     }
@@ -119,14 +140,32 @@ function ResearchContent() {
             }}
             className="text-xs font-bold text-slate-900 bg-transparent focus:outline-none cursor-pointer"
           >
+            {matters.length === 0 && <option value="">No matters available</option>}
             {matters.map((m) => (
               <option key={m.matter_id} value={m.matter_id}>
                 {m.name} ({m.matter_id})
               </option>
             ))}
           </select>
+          <button
+            onClick={initMatters}
+            className="p-1 rounded hover:bg-slate-100 text-slate-500 transition-colors ml-1"
+            title="Refresh Matters"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingMatters ? "animate-spin" : ""}`} />
+          </button>
         </div>
       </div>
+
+      {/* Backend Connection Error Banner */}
+      {initError && (
+        <BackendErrorBanner
+          message={initError}
+          isConnectionError={isConnError}
+          onRetry={initMatters}
+          retrying={loadingMatters}
+        />
+      )}
 
       {/* Main Research Container */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

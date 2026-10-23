@@ -13,47 +13,116 @@ import {
   Search,
   CheckCircle2,
   XCircle,
+  RefreshCw,
 } from "lucide-react";
-import { api } from "@/lib/api/client";
+import { api, getErrorMessage, isApiError } from "@/lib/api/client";
 import { Matter, SecurityStatus } from "@/types";
+import { BackendErrorBanner } from "@/components/ui/BackendErrorBanner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function DashboardPage() {
+  const { authReady, backendOnline } = useAuth();
   const [matters, setMatters] = useState<Matter[]>([]);
   const [securityStatus, setSecurityStatus] = useState<SecurityStatus | null>(null);
   const [readiness, setReadiness] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isConnError, setIsConnError] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+
+  const fetchData = async () => {
+    setError(null);
+    setIsConnError(false);
+    try {
+      // Execute with individual resilience
+      const [mattersRes, secRes, readyRes] = await Promise.allSettled([
+        api.listMatters(),
+        api.getSecurityStatus(),
+        api.getReadiness(),
+      ]);
+
+      if (mattersRes.status === "fulfilled") {
+        setMatters(mattersRes.value);
+      }
+      if (secRes.status === "fulfilled") {
+        setSecurityStatus(secRes.value);
+      }
+      if (readyRes.status === "fulfilled") {
+        setReadiness(readyRes.value);
+      } else {
+        setReadiness({ ready: false, subsystems: {} });
+      }
+
+      // Check if critical calls failed
+      if (mattersRes.status === "rejected") {
+        const msg = getErrorMessage(mattersRes.reason);
+        setError(msg);
+        setIsConnError(isApiError(mattersRes.reason) ? mattersRes.reason.isConnectionError : true);
+      } else if (secRes.status === "rejected") {
+        const msg = getErrorMessage(secRes.reason);
+        setError(msg);
+        setIsConnError(isApiError(secRes.reason) ? secRes.reason.isConnectionError : true);
+      }
+    } catch (err: any) {
+      const msg = getErrorMessage(err);
+      setError(msg);
+      setIsConnError(isApiError(err) ? err.isConnectionError : true);
+    } finally {
+      setLoading(false);
+      setRetrying(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [mattersData, secData, readyData] = await Promise.all([
-          api.listMatters(),
-          api.getSecurityStatus(),
-          api.getReadiness().catch((err) => ({ ready: false, subsystems: {} })),
-        ]);
-        setMatters(mattersData);
-        setSecurityStatus(secData);
-        setReadiness(readyData);
-      } catch (err) {
-        console.error("Dashboard data fetch error:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (!authReady) return;
+    if (!backendOnline) {
+      setLoading(false);
+      setError("Backend is offline. Ensure the FastAPI server is running on 127.0.0.1:8000.");
+      setIsConnError(true);
+      return;
+    }
     fetchData();
-  }, []);
+  }, [authReady, backendOnline]);
+
+  const handleRetry = () => {
+    setRetrying(true);
+    fetchData();
+  };
 
   const totalDocuments = matters.reduce((acc, m) => acc + (m.document_count || 0), 0);
 
   return (
     <div className="space-y-8">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Research Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Local, privacy-preserving legal assistant overview and operational status.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Research Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Local, privacy-preserving legal assistant overview and operational status.
+          </p>
+        </div>
+        {error && (
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold self-start"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${retrying ? "animate-spin" : ""}`} />
+            <span>Reconnect Backend</span>
+          </button>
+        )}
       </div>
+
+      {/* Error Alert Banner */}
+      {error && (
+        <BackendErrorBanner
+          message={error}
+          isConnectionError={isConnError}
+          onRetry={handleRetry}
+          retrying={retrying}
+        />
+      )}
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
@@ -174,6 +243,19 @@ export default function DashboardPage() {
 
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Loading authorized matters...</div>
+        ) : error && matters.length === 0 ? (
+          <div className="p-8 text-center space-y-3">
+            <p className="text-sm font-semibold text-rose-700">Unable to load matters: Backend unreachable</p>
+            <p className="text-xs text-slate-500">FastAPI backend at 127.0.0.1:8000 is not responding.</p>
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-md hover:bg-slate-800"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${retrying ? "animate-spin" : ""}`} />
+              <span>Retry Loading Matters</span>
+            </button>
+          </div>
         ) : matters.length === 0 ? (
           <div className="p-8 text-center space-y-3">
             <p className="text-sm text-slate-500">No matters assigned yet.</p>
