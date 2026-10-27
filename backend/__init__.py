@@ -1,1 +1,0 @@
-"""Legal RAG Backend Package."""
