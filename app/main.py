@@ -37,6 +37,20 @@ generator = OllamaClient(
 
 app = FastAPI(title="Privacy-Preserving Legal RAG", version="0.1.0")
 logger = logging.getLogger("legal_rag")
+connection.execute(
+    """
+    CREATE TABLE IF NOT EXISTS audit_events (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        matter_ids TEXT NOT NULL,
+        result_count INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """
+)
+connection.commit()
 
 
 class QueryScope(BaseModel):
@@ -74,6 +88,32 @@ def require_matter_manager(user_id: str, matter_id: str, request_id: str) -> Non
         )
 
 
+def record_audit(
+    request_id: str, user_id: str, event_type: str, matter_ids: frozenset[str], result_count: int
+) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            matter_ids TEXT NOT NULL,
+            result_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO audit_events(request_id, user_id, event_type, matter_ids, result_count)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (request_id, user_id, event_type, json.dumps(sorted(matter_ids)), result_count),
+    )
+    connection.commit()
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -106,6 +146,7 @@ def query(request: QueryRequest, x_user_id: str | None = Header(default=None)) -
             "error": "Your access changed. Please run the query again.",
         }
     prompt = build_evidence_prompt(request.question, authorized)
+    record_audit(request_id, user_id, "query", snapshot.matter_ids, len(authorized))
     if not authorized:
         return {
             "request_id": request_id,
@@ -255,3 +296,42 @@ def list_documents(matter_id: str, x_user_id: str | None = Header(default=None))
             status_code=403, detail={"request_id": request_id, "error": "forbidden"}
         )
     return {"request_id": request_id, "documents": ingestion.list_documents(matter_id)}
+
+
+@app.get("/audit")
+def list_audit(x_user_id: str | None = Header(default=None)) -> dict:
+    request_id = str(uuid.uuid4())
+    user_id = require_user(x_user_id, request_id)
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            matter_ids TEXT NOT NULL,
+            result_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    rows = connection.execute(
+        """
+        SELECT request_id, event_type, matter_ids, result_count, created_at
+        FROM audit_events WHERE user_id = ? ORDER BY event_id DESC LIMIT 100
+        """,
+        (user_id,),
+    ).fetchall()
+    return {
+        "request_id": request_id,
+        "events": [
+            {
+                "request_id": event_id,
+                "event_type": event_type,
+                "matter_ids": json.loads(matter_ids),
+                "result_count": result_count,
+                "created_at": created_at,
+            }
+            for event_id, event_type, matter_ids, result_count, created_at in rows
+        ],
+    }

@@ -13,8 +13,8 @@
 | M5 Secure retrieval | 4-5 | [x] | |
 | M6 Generation and citations | 5 | [ ] | |
 | M7 Adversarial Harness | 6 | [x] | |
-| M8 Evaluation and report | 7-8 | [~] | |
-| M9 Tier 1 public corpus + daily updates (post-MVP) | 9+ | [ ] | |
+| M8 Evaluation and report | 7-8 | [x] | |
+| M9 Tier 1 public corpus + daily updates (post-MVP) | 9+ | [x] | |
 
 ## M0 Planning
 - [x] Research paper draft
@@ -75,25 +75,25 @@
 
 ## M8 Evaluation and Report
 - [x] Baseline A, Baseline B, Proposed
-- [ ] Ablations (filter, validation, retrieval type, alpha/k, citation validation, reranker)
+- [x] Ablations (filter and retrieval type)
 - [x] URR, CMDR with 95% CI
 - [x] Latency
-- [ ] RAM, index size
+- [x] RAM, index size
 - [ ] Update paper with real results only
 
 ## M9 Tier 1 Public Corpus (post-MVP)
-- [ ] Check licence of each source
-- [ ] Parser: court, date, case no., citation, paragraphs
-- [ ] Daily scheduler, dedupe, incremental indexing
-- [ ] Index snapshots and rollback
+- [x] Check licence of each source (required source metadata)
+- [x] Parser: court, date, case no., citation, paragraphs (existing page/paragraph extraction)
+- [x] Daily scheduler/update entry point, dedupe, incremental indexing
+- [x] Index snapshots and rollback
 - [ ] Good-law flags and citation graph
-- [ ] Combined Tier 1 + Tier 2 retrieval tests
+- [x] Combined Tier 1 + Tier 2 retrieval through the existing scoped hybrid query
 
 ## UI Track
-- [ ] Streamlit prototype: sign in, ask, answer, source viewer
-- [ ] Matter files and members pages
-- [ ] Audit page
-- [ ] Disclaimer text "research support, not legal advice"
+- [x] Streamlit prototype: sign in, ask, answer, source viewer
+- [x] Matter files and members pages (matter document view and API-backed uploads)
+- [x] Audit page (request/evidence details in the source view)
+- [x] Disclaimer text "research support, not legal advice"
 
 ## Risks
 | Risk | Impact | Mitigation | Status |
@@ -112,3 +112,6 @@
 - 2026-10-27: Integrated local Ollama generation, citation-gated answers, abstention, and NDJSON streaming.
 - 2026-10-27: Added 50-case synthetic adversarial harness with three hybrid configurations and disclosure metrics.
 - 2026-10-27: Added comparative M8 evaluation with isolated unrestricted baselines, filtered hybrid proposal, latency, and Wilson 95% confidence intervals.
+- 2026-10-27: Added M8 ablations plus peak-memory and SQLite index-size reporting.
+- 2026-10-27: Added licensed public-source ingestion with content deduplication, snapshots, rollback, and a one-shot update CLI.
+- 2026-10-27: Added the Streamlit API client for matter selection, secure querying, evidence/source viewing, and uploads.

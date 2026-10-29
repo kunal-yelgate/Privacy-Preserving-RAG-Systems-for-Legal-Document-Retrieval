@@ -53,4 +53,7 @@ def test_comparative_evaluation_reports_baselines_and_proposed_system() -> None:
     ]
     assert report.configurations[-1].summary.cross_matter_disclosure_rate == 0.0
     assert report.configurations[0].summary.cross_matter_disclosure_rate > 0.0
+    assert len(report.ablations) == 3
+    assert report.resources is not None
+    assert report.resources.index_size_bytes > 0
     assert report.as_dict()["configurations"][0]["summary"]["total_cases"] == 50
