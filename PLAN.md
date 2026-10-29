@@ -91,7 +91,7 @@ Security-critical components: **Authorization filter** and **Context revalidatio
 | Layer | Choice | Why |
 |---|---|---|
 | API | FastAPI | Simple, async, testable |
-| UI | Streamlit first, React later | Fast to build |
+| UI | Next.js React frontend | Simple local user experience |
 | Extraction | PyMuPDF, python-docx, Tesseract (OCR only if needed) | Local, light |
 | Embeddings | bge-small-en-v1.5 or all-MiniLM-L6-v2 | Small, fast on CPU |
 | Vector index | Qdrant (local) or LanceDB/Chroma | Payload filtering inside the query |

@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -36,6 +37,15 @@ generator = OllamaClient(
 )
 
 app = FastAPI(title="Privacy-Preserving Legal RAG", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 logger = logging.getLogger("legal_rag")
 connection.execute(
     """
@@ -278,10 +288,21 @@ async def upload_document(
     metadata = DocumentMetadata(
         document_id, matter_id, Path(file.filename or "").name, media_types[suffix]
     )
-    with tempfile.TemporaryDirectory() as temporary_directory:
-        temporary_path = Path(temporary_directory) / metadata.filename
-        temporary_path.write_bytes(await file.read())
-        status = ingestion.ingest(metadata, temporary_path)
+    try:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory) / metadata.filename
+            temporary_path.write_bytes(await file.read())
+            status = ingestion.ingest(metadata, temporary_path)
+    except OSError:
+        safe_event(logger, "document_upload_failed", request_id=request_id, user_id=user_id)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "request_id": request_id,
+                "error": "document_storage_failed",
+                "message": "The uploaded document could not be stored locally.",
+            },
+        )
     return {"request_id": request_id, "document_id": document_id, "status": status}
 
 

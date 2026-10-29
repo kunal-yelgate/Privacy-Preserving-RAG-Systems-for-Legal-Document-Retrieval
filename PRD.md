@@ -68,7 +68,7 @@ An online legal research assistant for **Indian law**. A lawyer describes a case
 | Release | Contents |
 |---|---|
 | MVP (research prototype) | Tier 2 private matters on synthetic data, matter-level authz, hybrid retrieval, local LLM, citation validation, adversarial test harness |
-| v1 | Tier 1 public corpus (one court first), daily ingestion, good-law flags, Streamlit/React UI |
+| v1 | Tier 1 public corpus (one court first), daily ingestion, good-law flags, Next.js React UI |
 | v2 | Document-level roles, citation graph, more courts, Indian-language support, real auth (OAuth/JWT), encryption at rest |
 
 ## 9. Risks and Dependencies

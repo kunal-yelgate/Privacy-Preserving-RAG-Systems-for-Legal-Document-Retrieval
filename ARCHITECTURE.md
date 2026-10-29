@@ -47,7 +47,7 @@
 ## 3. Components
 | Component | Responsibility | Notes |
 |---|---|---|
-| UI | Query box, results, citations, matter selector, admin pages | Streamlit first, React later |
+| UI | Query box, results, citations, matter selector, admin pages | Next.js React frontend |
 | API | Routes, authentication, request IDs, rate limits | FastAPI, stateless |
 | Auth/Policy | Users, matters, memberships, `policy_version` | Tiny and unit-tested separately |
 | Ingestion (Tier 2) | Extract, OCR, chunk, tag metadata, embed | Per-matter, user-triggered |
