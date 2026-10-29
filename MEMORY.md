@@ -12,7 +12,7 @@
 
 ## 2. Environment Facts
 - Dev machine: Windows, about 8 GB RAM, GPU uncertain (confirm and record)
-- LLM: Ollama, selected model `qwen3:4b` for local grounded generation
+- LLM: Ollama, selected model `mistral:latest` for local grounded generation
 - Embeddings: deterministic local hash baseline for the MVP; replaceable local model interface
 - Vector store: SQLite with NumPy vectors for the MVP
 - Ingestion: local PyMuPDF and python-docx extraction; scanned-PDF OCR fails closed until a local Tesseract runtime is approved and installed

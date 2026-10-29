@@ -22,7 +22,11 @@ class PolicyStore:
             );
             CREATE TABLE IF NOT EXISTS matters (
                 matter_id TEXT PRIMARY KEY,
-                owner_id TEXT NOT NULL REFERENCES users(user_id)
+                owner_id TEXT NOT NULL REFERENCES users(user_id),
+                client_name TEXT,
+                case_title TEXT,
+                case_number TEXT,
+                case_description TEXT
             );
             CREATE TABLE IF NOT EXISTS memberships (
                 user_id TEXT NOT NULL REFERENCES users(user_id),
@@ -37,6 +41,12 @@ class PolicyStore:
             INSERT OR IGNORE INTO policy_state(id, version) VALUES (1, 1);
             """
         )
+        columns = {
+            str(row[1]) for row in self.connection.execute("PRAGMA table_info(matters)").fetchall()
+        }
+        for column in ("client_name", "case_title", "case_number", "case_description"):
+            if column not in columns:
+                self.connection.execute(f"ALTER TABLE matters ADD COLUMN {column} TEXT")
         self.connection.commit()
 
     def add_user(self, user_id: str, display_name: str) -> None:
@@ -51,17 +61,52 @@ class PolicyStore:
         ).fetchone()
         return row is not None
 
-    def add_matter(self, matter_id: str, owner_id: str) -> None:
+    def add_matter(
+        self,
+        matter_id: str,
+        owner_id: str,
+        client_name: str | None = None,
+        case_title: str | None = None,
+        case_number: str | None = None,
+        case_description: str | None = None,
+    ) -> None:
         self.connection.execute(
-            "INSERT INTO matters(matter_id, owner_id) VALUES (?, ?)", (matter_id, owner_id)
+            """
+            INSERT INTO matters(
+                matter_id, owner_id, client_name, case_title, case_number, case_description
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                matter_id,
+                owner_id,
+                client_name,
+                case_title,
+                case_number,
+                case_description,
+            ),
         )
         self.add_member(owner_id, matter_id, "owner")
         self.connection.commit()
 
-    def create_matter(self, matter_id: str, owner_id: str) -> None:
+    def create_matter(
+        self,
+        matter_id: str,
+        owner_id: str,
+        client_name: str | None = None,
+        case_title: str | None = None,
+        case_number: str | None = None,
+        case_description: str | None = None,
+    ) -> None:
         if not self.user_exists(owner_id):
             raise ValueError("owner does not exist")
-        self.add_matter(matter_id, owner_id)
+        self.add_matter(
+            matter_id,
+            owner_id,
+            client_name,
+            case_title,
+            case_number,
+            case_description,
+        )
 
     def add_member(self, user_id: str, matter_id: str, role: str = "member") -> None:
         self.connection.execute(
@@ -98,7 +143,8 @@ class PolicyStore:
     def list_matters(self, user_id: str) -> list[dict[str, str]]:
         rows = self.connection.execute(
             """
-            SELECT m.matter_id, m.owner_id, ms.role
+            SELECT m.matter_id, m.owner_id, ms.role, m.client_name, m.case_title,
+                   m.case_number, m.case_description
             FROM matters AS m
             JOIN memberships AS ms ON ms.matter_id = m.matter_id
             WHERE ms.user_id = ?
@@ -107,8 +153,24 @@ class PolicyStore:
             (user_id,),
         ).fetchall()
         return [
-            {"matter_id": str(matter_id), "owner_id": str(owner_id), "role": str(role)}
-            for matter_id, owner_id, role in rows
+            {
+                "matter_id": str(matter_id),
+                "owner_id": str(owner_id),
+                "role": str(role),
+                "client_name": client_name,
+                "case_title": case_title,
+                "case_number": case_number,
+                "case_description": case_description,
+            }
+            for (
+                matter_id,
+                owner_id,
+                role,
+                client_name,
+                case_title,
+                case_number,
+                case_description,
+            ) in rows
         ]
 
     def _increment_version(self) -> None:

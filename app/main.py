@@ -81,6 +81,10 @@ class MemberRequest(BaseModel):
 
 class MatterRequest(BaseModel):
     matter_id: str = Field(min_length=1, max_length=128)
+    client_name: str | None = Field(default=None, max_length=200)
+    case_title: str | None = Field(default=None, max_length=200)
+    case_number: str | None = Field(default=None, max_length=100)
+    case_description: str | None = Field(default=None, max_length=2000)
 
 
 def require_user(user_id: str | None, request_id: str) -> str:
@@ -223,8 +227,22 @@ def create_matter(request: MatterRequest, x_user_id: str | None = Header(default
         raise HTTPException(
             status_code=409, detail={"request_id": request_id, "error": "already_exists"}
         )
-    policy.create_matter(request.matter_id, user_id)
-    return {"request_id": request_id, "matter_id": request.matter_id}
+    policy.create_matter(
+        request.matter_id,
+        user_id,
+        request.client_name,
+        request.case_title,
+        request.case_number,
+        request.case_description,
+    )
+    return {
+        "request_id": request_id,
+        "matter_id": request.matter_id,
+        "client_name": request.client_name,
+        "case_title": request.case_title,
+        "case_number": request.case_number,
+        "case_description": request.case_description,
+    }
 
 
 @app.post("/matters/{matter_id}/members", status_code=201)
