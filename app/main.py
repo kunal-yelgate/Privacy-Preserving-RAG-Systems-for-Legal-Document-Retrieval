@@ -128,6 +128,35 @@ def record_audit(
     connection.commit()
 
 
+def citation_source_name(document_id: str) -> str | None:
+    """Return a display label for a cited private or public document."""
+    try:
+        row = connection.execute(
+            "SELECT filename FROM documents WHERE document_id = ? AND status = 'indexed'",
+            (document_id,),
+        ).fetchone()
+        if row:
+            return str(row[0])
+    except sqlite3.OperationalError:
+        # The public corpus may be initialized before private ingestion tables
+        # exist in a lightweight deployment or test database.
+        pass
+
+    try:
+        row = connection.execute(
+            """
+            SELECT s.title
+            FROM public_documents d
+            JOIN public_sources s ON s.source_id = d.source_id
+            WHERE d.document_id = ? AND d.status = 'indexed'
+            """,
+            (document_id,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return str(row[0]) if row else None
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -184,10 +213,17 @@ def query(request: QueryRequest, x_user_id: str | None = Header(default=None)) -
         "request_id": request_id,
         "abstained": validated.abstained,
         "answer": validated.text if not validated.abstained else None,
-        "citations": [citation.__dict__ for citation in validated.citations],
+        "citations": [
+            {
+                **citation.__dict__,
+                "source_name": citation_source_name(citation.document_id),
+            }
+            for citation in validated.citations
+        ],
         "evidence": [
             {
                 "chunk_id": chunk.chunk_id,
+                "document_id": chunk.document_id,
                 "tier": chunk.tier,
                 "matter_id": chunk.matter_id,
                 "court": chunk.court,

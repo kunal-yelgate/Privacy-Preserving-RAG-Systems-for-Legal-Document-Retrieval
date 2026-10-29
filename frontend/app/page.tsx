@@ -11,12 +11,21 @@ type Evidence = {
   chunk_id: string;
   document_id: string;
   matter_id: string | null;
-  page: number | null;
+  tier: string;
+  paragraph: number | null;
+};
+type Citation = {
+  chunk_id: string;
+  document_id: string;
+  source_name?: string | null;
+  matter_id: string | null;
+  tier: string;
   paragraph: number | null;
 };
 type Answer = {
   answer?: string | null;
   abstained?: boolean;
+  citations?: Citation[];
   evidence?: Evidence[];
 };
 
@@ -219,7 +228,10 @@ export default function Home() {
       {result && <section className="answer">
         <p className="eyebrow">GROUNDED ANSWER</p>
         {result.abstained || !result.answer ? <h2>There is not enough supporting evidence to answer safely.</h2> : <p className="answer-text">{result.answer}</p>}
-        {!!result.evidence?.length && <div className="sources"><strong>Sources checked</strong>{result.evidence.map((item) => <span key={item.chunk_id}>{item.document_id}{item.page ? ` · page ${item.page}` : ""}</span>)}</div>}
+        {!!result.citations?.length && <div className="sources"><strong>Cited sources</strong>{[...new Map(result.citations.map((citation) => [citation.chunk_id, citation])).values()].map((citation) => {
+          const document = documents.find((item) => item.document_id === citation.document_id);
+          return <span key={citation.chunk_id}>{document?.filename ?? citation.source_name ?? `Document ${citation.document_id}`}{citation.paragraph ? ` · paragraph ${citation.paragraph}` : ""}</span>;
+        })}</div>}
       </section>}
       <footer>Research support only — not legal advice. Your documents stay within this local system.</footer>
     </main>

@@ -7,6 +7,68 @@ import numpy as np
 
 from app.security.filter import Chunk
 
+_PUBLIC_QUERY_STOP_WORDS = {
+    "a", "about", "after", "all", "also", "an", "and", "any", "are", "as", "at",
+    "be", "because", "been", "before", "being", "by", "can", "case", "claim", "claims",
+    "company", "court", "determine", "did", "do", "does", "for", "from", "had", "has", "have", "how",
+    "if", "in", "into", "is", "it", "law", "legal", "matter", "may", "must", "of", "on",
+    "or", "party", "plaintiff", "defendant", "question", "record", "should", "that", "the",
+    "land", "order", "ordered", "prove", "proved", "proof", "their", "them", "then", "there",
+    "these", "this", "those", "to", "under", "unlawful", "unlawfully", "was", "what",
+    "when", "where", "whether", "which", "who", "will", "with", "would",
+}
+
+
+def _topic_terms(text: str) -> set[str]:
+    terms: set[str] = set()
+    for token in re.findall(r"[a-z0-9]+", text.casefold()):
+        if token in _PUBLIC_QUERY_STOP_WORDS or len(token) < 3:
+            continue
+        if token.startswith("environment"):
+            token = "environment"
+        elif token.startswith(("deforest", "forest")):
+            token = "forest"
+        elif token.startswith(("clear", "clearing")):
+            token = "clear"
+        elif token.startswith("remed"):
+            token = "remed"
+        elif token.endswith("ies") and len(token) > 4:
+            token = f"{token[:-3]}y"
+        elif token.endswith("s") and len(token) > 4:
+            token = token[:-1]
+        terms.add(token)
+    return terms
+
+
+def _public_passage_matches_topic(query: str, text: str) -> bool:
+    """Reject public passages that only share generic legal words with a query."""
+    return len(_topic_terms(query) & _topic_terms(text)) >= 2
+
+
+def _expand_public_query(query: str) -> str:
+    """Add evidence vocabulary for forest-clearing and environmental-harm questions."""
+    terms = _topic_terms(query)
+    additions: list[str] = []
+    if terms & {"forest", "tree", "clear", "deforestation"}:
+        additions.append(
+            "forest clearing permits approvals satellite imagery photographs land records "
+            "official boundaries surveys company contractor equipment witness inspection"
+        )
+    if terms & {"environment", "damage", "harm", "wildlife", "erosion", "stream"}:
+        additions.append(
+            "environmental ecological assessment baseline habitat wildlife soil erosion "
+            "stream flow water quality causation restoration remediation compensation monitoring"
+        )
+    return " ".join([query, *additions])
+
+
+def _is_question_only_passage(text: str) -> bool:
+    """Avoid treating embedded questions or issue headings as evidence."""
+    normalized = text.strip().casefold()
+    return normalized.endswith("?") or normalized.startswith(
+        ("whether ", "what restoration ", "what remedy ", "what remedies ")
+    )
+
 
 class LocalIndex:
     def __init__(self, connection: sqlite3.Connection, dimensions: int) -> None:
@@ -27,10 +89,14 @@ class LocalIndex:
             USING fts5(chunk_id UNINDEXED, text)
             """
         )
+        # FTS5 does not enforce a unique chunk_id. Rebuild this derived index
+        # from the authoritative chunk table so reopening the DB cannot append
+        # duplicate search rows and crowd relevant evidence out of top-k.
+        self.connection.execute("DELETE FROM chunks_fts")
         self.connection.execute(
             """
-            INSERT OR IGNORE INTO chunks_fts(chunk_id, text)
-            SELECT chunk_id, text FROM chunks
+            INSERT INTO chunks_fts(chunk_id, text)
+            SELECT chunk_id, text FROM chunks WHERE status = 'active'
             """
         )
         self.connection.commit()
@@ -143,22 +209,63 @@ class LocalIndex:
     ) -> list[Chunk]:
         if not 0.0 <= alpha <= 1.0:
             raise ValueError("alpha must be between 0 and 1")
-        dense_chunks = self.search(
-            query_embedding, matter_ids, top_k, include_public=include_public
+        # The local hash embedder is a deterministic offline baseline, not a
+        # semantic model. Use it for private case passages, but require lexical
+        # evidence before adding public legal material; otherwise unrelated
+        # public authorities can crowd out the case's actual law.
+        dense_private = self.search(
+            query_embedding, matter_ids, top_k, include_public=False
         )
-        lexical = self.search_lexical(query, matter_ids, top_k, include_public=include_public)
+        dense_private = [
+            chunk for chunk in dense_private if not _is_question_only_passage(chunk.text)
+        ]
+        lexical_private = self.search_lexical(
+            query, matter_ids, top_k, include_public=False
+        )
+        lexical_private = [
+            (chunk, score)
+            for chunk, score in lexical_private
+            if not _is_question_only_passage(chunk.text)
+        ]
+        public_query = _expand_public_query(query)
+        lexical_public = (
+            self.search_lexical(public_query, frozenset(), top_k * 2, include_public=True)
+            if include_public
+            else []
+        )
+        lexical_public = [
+            (chunk, score)
+            for chunk, score in lexical_public
+            if _public_passage_matches_topic(public_query, chunk.text)
+        ]
+        lexical = [*lexical_private, *lexical_public]
+        candidates = {chunk.chunk_id: chunk for chunk in dense_private}
+        candidates.update({chunk.chunk_id: chunk for chunk, _ in lexical})
         dense_scores = _dense_scores(
-            dense_chunks, query_embedding, self.connection, self.dimensions
+            list(candidates.values()), query_embedding, self.connection, self.dimensions
         )
         lexical_scores = {chunk.chunk_id: score for chunk, score in lexical}
-        candidates = {chunk.chunk_id: chunk for chunk in dense_chunks}
-        candidates.update({chunk.chunk_id: chunk for chunk, _ in lexical})
         ranked = sorted(
             candidates.values(),
-            key=lambda chunk: alpha * dense_scores.get(chunk.chunk_id, 0.0)
-            + (1.0 - alpha) * lexical_scores.get(chunk.chunk_id, 0.0),
+            key=lambda chunk: (
+                0.1 * dense_scores.get(chunk.chunk_id, 0.0)
+                + 0.9 * lexical_scores.get(chunk.chunk_id, 0.0)
+                if chunk.tier == "public"
+                else alpha * dense_scores.get(chunk.chunk_id, 0.0)
+                + (1.0 - alpha) * lexical_scores.get(chunk.chunk_id, 0.0)
+            ),
             reverse=True,
         )
+        private_ranked = [chunk for chunk in ranked if chunk.tier == "private"]
+        public_ranked = [chunk for chunk in ranked if chunk.tier == "public"]
+        if private_ranked and public_ranked:
+            # Keep public authorities from crowding out the user's case record.
+            public_limit = top_k // 2
+            selected = [
+                *private_ranked[: top_k - public_limit],
+                *public_ranked[:public_limit],
+            ]
+            return selected[:top_k]
         return ranked[:top_k]
 
 
