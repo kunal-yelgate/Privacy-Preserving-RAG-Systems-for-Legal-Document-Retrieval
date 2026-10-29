@@ -164,17 +164,7 @@ Other model options:
 
 | Computer | Model | Recommendation |
 |---|---|---|
-<<<<<<< HEAD
-| 8 GB RAM | `qwen2.5:1.5b` | Fastest, but weaker legal answers |
-| 16 GB RAM | `mistral:latest` | Default for this setup |
-| 16 GB RAM | `qwen3:8b` | Better reasoning, more memory required |
-| 32 GB RAM or a capable GPU | `qwen3:14b` | Higher quality, slower locally |
-=======
-| 8 GB RAM | `mistral:latest` | Recommended project default |
-| 16 GB RAM | `qwen3:8b` | Alternative with stronger reasoning |
-| 32 GB RAM or a capable GPU | `qwen3:14b` | Alternative with higher quality |
-| Very limited hardware | `qwen2.5:1.5b` | Fastest, but weaker legal answers |
->>>>>>> dcbb348c53a053763dbbb35f5c8888b7b31d8c28
+
 
 If you select another model, update `.env`:
 
