@@ -36,6 +36,7 @@ coverage.xml
 data/*.sqlite3
 data/*.db
 data/*.sqlite
+data/*.pdf
 
 # Editor and operating-system files
 .vscode/

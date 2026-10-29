@@ -28,6 +28,10 @@ The application provides a simple web workflow:
 The system also keeps private cases separated. A user can only retrieve documents
 from matters to which that user has access.
 
+The supplied Constitution of India PDF is configured as the initial public knowledge
+base. It is indexed locally as public evidence, so questions can use constitutional
+provisions together with authorized case documents.
+
 ## What is RAG?
 
 **RAG** means **Retrieval-Augmented Generation**. It is a safer way to use an AI model
@@ -357,6 +361,32 @@ default case `demo-matter`.
 
 If the answer cannot be supported by authorized passages, the system abstains. That
 behavior is intentional.
+
+By default, questions include public knowledge-base documents. To ask only about a
+private case document, the frontend/API can disable the public scope. The Constitution
+source is identified as:
+
+```text
+The Constitution of India (as on 1 May 2024)
+Source: Government of India, Legislative Department
+```
+
+### Rebuild the Constitution knowledge base
+
+The indexed SQLite database is local and is intentionally ignored by Git. To rebuild
+the public Constitution index on another machine, place the supplied text-based PDF
+at the repository root as `Constitution of India.pdf` and run:
+
+```powershell
+python -m app.ingest.public_update "Constitution of India.pdf" `
+  --source-id constitution-of-india `
+  --source-title "The Constitution of India (as on 1 May 2024)" `
+  --license "Government of India public access" `
+  --source-url "https://legislative.gov.in/constitution-of-india/"
+```
+
+The PDF must contain selectable text. Image-only scans are quarantined unless a local
+OCR runtime is installed and configured.
 
 ## Test the project
 

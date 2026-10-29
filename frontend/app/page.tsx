@@ -5,7 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const USER_ID = process.env.NEXT_PUBLIC_USER_ID ?? "demo-user";
 
-type Matter = { matter_id: string; role: string };
+type Matter = { matter_id: string; role: string; client_name?: string; case_title?: string; case_number?: string };
 type Document = { document_id: string; filename: string; status: string; quarantine_reason?: string | null };
 type Evidence = {
   chunk_id: string;
@@ -38,12 +38,23 @@ export default function Home() {
   const [matters, setMatters] = useState<Matter[]>([]);
   const [matterId, setMatterId] = useState("");
   const [newMatterId, setNewMatterId] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [caseTitle, setCaseTitle] = useState("");
+  const [caseNumber, setCaseNumber] = useState("");
+  const [caseDescription, setCaseDescription] = useState("");
   const [documents, setDocuments] = useState<Document[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<Answer | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pipelineStep, setPipelineStep] = useState("idle");
+  const pipeline = [
+    ["upload", "Document", "Upload PDF or DOCX"],
+    ["extracted", "Extract", "Read pages and paragraphs"],
+    ["retrieving", "Retrieve", "Find authorized evidence"],
+    ["answered", "Answer", "Generate cited answer"],
+  ];
 
   useEffect(() => {
     api<{ matters: Matter[] }>("/matters")
@@ -70,15 +81,25 @@ export default function Home() {
     if (!value) return setMessage("Enter a name for your case.");
     setBusy(true);
     try {
-      await api(`/matters`, {
+      const created = await api<Matter>(`/matters`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matter_id: value }),
+        body: JSON.stringify({
+          matter_id: value,
+          client_name: clientName.trim() || null,
+          case_title: caseTitle.trim() || null,
+          case_number: caseNumber.trim() || null,
+          case_description: caseDescription.trim() || null,
+        }),
       });
-      setMatters((current) => [...current, { matter_id: value, role: "owner" }]);
+      setMatters((current) => [...current, { ...created, matter_id: value, role: "owner" }]);
       setMatterId(value);
       setNewMatterId("");
-      setMessage(`Case "${value}" is ready.`);
+      setClientName("");
+      setCaseTitle("");
+      setCaseNumber("");
+      setCaseDescription("");
+      setMessage(`Case "${value}" is ready for documents.`);
     } catch (error) {
       setMessage((error as Error).message);
     } finally {
@@ -104,6 +125,7 @@ export default function Home() {
           : `This document was not indexed: ${response.quarantine_reason ?? response.status}`,
       );
       setFile(null);
+      setPipelineStep("extracted");
       const { documents: available } = await api<{ documents: Document[] }>(
         `/matters/${encodeURIComponent(matterId)}/documents`,
       );
@@ -120,6 +142,7 @@ export default function Home() {
     if (!question.trim()) return setMessage("Type a question about your case.");
     setBusy(true);
     setMessage("");
+    setPipelineStep("retrieving");
     try {
       setResult(
         await api<Answer>("/query", {
@@ -131,11 +154,13 @@ export default function Home() {
           }),
         }),
       );
+      setPipelineStep("answered");
     } catch (error) {
       setMessage((error as Error).message);
     } finally {
       setBusy(false);
     }
+
   }
 
   return (
@@ -159,11 +184,15 @@ export default function Home() {
             {matters.map((matter) => <option key={matter.matter_id} value={matter.matter_id}>{matter.matter_id}</option>)}
           </select>
           <form className="new-case" onSubmit={createMatter}>
-            <label htmlFor="new-case">Or start a new case</label>
+            <label htmlFor="new-case">Start a new case</label>
             <div className="inline-form">
               <input id="new-case" value={newMatterId} onChange={(event) => setNewMatterId(event.target.value)} placeholder="e.g. Sharma v State" />
-              <button type="submit" disabled={busy || !newMatterId.trim()}>Create</button>
+              <button type="submit" disabled={busy || !newMatterId.trim() || !clientName.trim() || !caseTitle.trim()}>Create</button>
             </div>
+            <input aria-label="Client name" value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Client name" />
+            <input aria-label="Case title" value={caseTitle} onChange={(event) => setCaseTitle(event.target.value)} placeholder="Case title" />
+            <input aria-label="Case number" value={caseNumber} onChange={(event) => setCaseNumber(event.target.value)} placeholder="Case number (optional)" />
+            <textarea aria-label="Case details" value={caseDescription} onChange={(event) => setCaseDescription(event.target.value)} placeholder="Short case details (optional)" />
           </form>
         </div>
         <form className="card upload-card" onSubmit={upload}>
@@ -182,6 +211,10 @@ export default function Home() {
           <textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="For example: What evidence supports the contract breach claim?" />
           <button type="submit" disabled={busy || !question.trim()}>{busy ? "Researching..." : "Find my answer  →"}</button>
         </form>
+      </section>
+      <section className="pipeline" aria-label="RAG pipeline progress">
+        <div className="pipeline-heading"><div><p className="eyebrow">HOW YOUR ANSWER IS BUILT</p><h2>Secure RAG pipeline</h2></div><p>Your documents stay local. Only authorized evidence reaches Ollama.</p></div>
+        <div className="pipeline-track">{pipeline.map(([key, title, detail], index) => <div className={`pipeline-step ${pipelineStep === key || (pipelineStep === "answered" && key !== "upload") ? "active" : ""}`} key={key}><span>{index + 1}</span><strong>{title}</strong><small>{detail}</small>{index < pipeline.length - 1 && <i />}</div>)}</div>
       </section>
       {result && <section className="answer">
         <p className="eyebrow">GROUNDED ANSWER</p>
