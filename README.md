@@ -28,9 +28,10 @@ The application provides a simple web workflow:
 The system also keeps private cases separated. A user can only retrieve documents
 from matters to which that user has access.
 
-The supplied Constitution of India PDF is configured as the initial public knowledge
-base. It is indexed locally as public evidence, so questions can use constitutional
-provisions together with authorized case documents.
+The optional public knowledge base is stored in the local SQLite database. It starts
+empty until public legal documents are ingested. Questions include the indexed public
+sources alongside documents from the selected authorized case. The Constitution
+instructions below show one way to add a public source.
 
 ## What is RAG?
 
@@ -243,11 +244,11 @@ The default configuration is:
 | `APP_ENV` | `development` | Local environment name |
 | `DATABASE_PATH` | `data/legal_rag.sqlite3` | Local SQLite database |
 | `EMBEDDING_DIMENSIONS` | `384` | Local vector size |
-| `RETRIEVAL_TOP_K` | `8` | Maximum retrieved passages |
+| `RETRIEVAL_TOP_K` | `12` | Maximum retrieved passages |
 | `HYBRID_ALPHA` | `0.7` | Dense-search weight from `0.0` to `1.0` |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Local Ollama address |
 | `OLLAMA_MODEL` | `mistral:latest` | Local answer model |
-| `OLLAMA_TIMEOUT_SECONDS` | `60` | Ollama request timeout |
+| `OLLAMA_TIMEOUT_SECONDS` | `300` | Ollama request timeout |
 
 ## Install and configure Ollama
 
@@ -268,11 +269,11 @@ questions through the application.
 
 ## Install the frontend
 
-Open a second PowerShell window:
+Open PowerShell in the repository root, then install the locked frontend dependencies:
 
 ```powershell
-cd "C:\path\to\Privacy-Preserving-RAG-Systems-for-Legal-Document-Retrieval\frontend"
-npm install
+Set-Location .\frontend
+npm ci
 ```
 
 The frontend uses these defaults:
@@ -290,21 +291,37 @@ Copy-Item .env.example .env.local
 
 Then edit `frontend/.env.local`.
 
-## Run the complete project
+## Run the project after setup
 
-Three local processes are used.
+Complete the backend, Ollama, and frontend installation sections above once. For each
+later run, open three PowerShell terminals. Start Terminals 2 and 3 in the repository
+root (the folder containing `README.md`) and keep them open while using the application.
 
 ### Terminal 1: start Ollama
 
-Make sure the Ollama application/service is running and that `mistral:latest` is installed.
+The Ollama service must be running and `mistral:latest` must already be installed. The
+model download is a one-time step; check it with:
+
+```powershell
+ollama pull mistral:latest
+ollama list
+```
+
+If Ollama is not already running as a Windows service or desktop app, start it in this
+terminal and leave it open. Do not run this command when the Ollama service is already active:
+
+```powershell
+ollama serve
+```
 
 ### Terminal 2: start the backend
 
-From the repository root, with the Python virtual environment activated:
+From the repository root, initialize the local demo user/case (safe to rerun), then
+start the API server. Use the project virtual environment's Python executable:
 
 ```powershell
-python -m app.bootstrap
-python -m uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe -m app.bootstrap
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 The backend runs at:
@@ -329,8 +346,10 @@ ok
 
 ### Terminal 3: start the frontend
 
+Run `npm ci` once during setup; on later runs, start the development server with:
+
 ```powershell
-cd "C:\path\to\Privacy-Preserving-RAG-Systems-for-Legal-Document-Retrieval\frontend"
+Set-Location .\frontend
 npm run dev
 ```
 
@@ -359,9 +378,9 @@ default case `demo-matter`.
 If the answer cannot be supported by authorized passages, the system abstains. That
 behavior is intentional.
 
-By default, questions include public knowledge-base documents. To ask only about a
-private case document, the frontend/API can disable the public scope. The Constitution
-source is identified as:
+By default, questions include any documents already in the public knowledge base. To ask
+only about a private case document, the frontend/API can disable the public scope. If you
+ingest the Constitution PDF using the instructions below, its source is identified as:
 
 ```text
 The Constitution of India (as on 1 May 2024)
@@ -370,9 +389,9 @@ Source: Government of India, Legislative Department
 
 ### Rebuild the Constitution knowledge base
 
-The indexed SQLite database is local and is intentionally ignored by Git. To rebuild
-the public Constitution index on another machine, place the supplied text-based PDF
-at the repository root as `Constitution of India.pdf` and run:
+The indexed SQLite database is local and is intentionally ignored by Git. To build or
+rebuild the public Constitution index, place a text-based PDF at the repository root as
+`Constitution of India.pdf` and run:
 
 ```powershell
 python -m app.ingest.public_update "Constitution of India.pdf" `
@@ -420,10 +439,10 @@ queries, indirect disclosure attempts, prompt injection, and unanswerable questi
 
 ### “Cannot connect to the API”
 
-Start the backend from the repository root:
+Start the backend from the repository root using the project virtual environment:
 
 ```powershell
-python -m uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 ### “Local generation unavailable”
