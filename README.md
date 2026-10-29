@@ -143,13 +143,13 @@ system to abstain instead of presenting an unsupported answer.
 The default model is:
 
 ```text
-qwen3:4b
+mistral:latest
 ```
 
 Install it locally:
 
 ```powershell
-ollama pull qwen3:4b
+ollama pull mistral:latest
 ```
 
 This model is used for **answer generation**, not for document parsing or embedding.
@@ -160,10 +160,10 @@ Recommended model sizes:
 
 | Computer | Model | Recommendation |
 |---|---|---|
-| 8 GB RAM | `qwen3:4b` | Recommended starting point |
+| 8 GB RAM | `qwen2.5:1.5b` | Fastest, but weaker legal answers |
+| 16 GB RAM | `mistral:latest` | Default for this setup |
 | 16 GB RAM | `qwen3:8b` | Better reasoning, more memory required |
 | 32 GB RAM or a capable GPU | `qwen3:14b` | Higher quality, slower locally |
-| Very limited hardware | `qwen2.5:1.5b` | Fastest, but weaker legal answers |
 
 If you select another model, update `.env`:
 
@@ -245,7 +245,7 @@ The default configuration is:
 | `RETRIEVAL_TOP_K` | `8` | Maximum retrieved passages |
 | `HYBRID_ALPHA` | `0.7` | Dense-search weight from `0.0` to `1.0` |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Local Ollama address |
-| `OLLAMA_MODEL` | `qwen3:4b` | Local answer model |
+| `OLLAMA_MODEL` | `mistral:latest` | Local answer model |
 | `OLLAMA_TIMEOUT_SECONDS` | `60` | Ollama request timeout |
 
 ## Install and configure Ollama
@@ -253,7 +253,7 @@ The default configuration is:
 Install Ollama from <https://ollama.com>, start it, and download the model:
 
 ```powershell
-ollama pull qwen3:4b
+ollama pull mistral:latest
 ```
 
 Check that the model is available:
@@ -295,7 +295,7 @@ Three local processes are used.
 
 ### Terminal 1: start Ollama
 
-Make sure the Ollama application/service is running and that `qwen3:4b` is installed.
+Make sure the Ollama application/service is running and that `mistral:latest` is installed.
 
 ### Terminal 2: start the backend
 
@@ -405,7 +405,7 @@ Check Ollama and the model:
 
 ```powershell
 ollama list
-ollama pull qwen3:4b
+ollama pull mistral:latest
 ```
 
 Then retry the question.
