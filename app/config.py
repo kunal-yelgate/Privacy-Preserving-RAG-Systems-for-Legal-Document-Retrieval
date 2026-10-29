@@ -7,11 +7,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_path: str = "data/legal_rag.sqlite3"
     embedding_dimensions: int = 384
-    retrieval_top_k: int = 8
+    retrieval_top_k: int = 12
     hybrid_alpha: float = 0.7
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "mistral:latest"
-    ollama_timeout_seconds: float = 60.0
+    ollama_timeout_seconds: float = 300.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

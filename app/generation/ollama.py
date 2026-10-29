@@ -17,7 +17,14 @@ class OllamaClient:
     def generate(self, prompt: str) -> str:
         request = Request(
             f"{self.base_url}/api/generate",
-            data=json.dumps({"model": self.model, "prompt": prompt, "stream": False}).encode(),
+            data=json.dumps(
+                {
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0, "num_predict": 384},
+                }
+            ).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -34,7 +41,14 @@ class OllamaClient:
     def generate_stream(self, prompt: str) -> Iterator[str]:
         request = Request(
             f"{self.base_url}/api/generate",
-            data=json.dumps({"model": self.model, "prompt": prompt, "stream": True}).encode(),
+            data=json.dumps(
+                {
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": True,
+                    "options": {"temperature": 0, "num_predict": 384},
+                }
+            ).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
